@@ -5,7 +5,7 @@ from plotly.subplots import make_subplots
 
 # --- Page Config ---
 st.set_page_config(
-    page_title="Options Payoff Dashboard",
+    page_title="Options Payoff Dashboard built by Elka",
     page_icon="📈",
     layout="wide"
 )
