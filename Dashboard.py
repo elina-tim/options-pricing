@@ -24,7 +24,7 @@ def normal_pdf(x, mu=0, sigma=1):
     return (1 / (sigma * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
 
 # --- Title ---
-st.title("📈 Options Payoff Dashboard")
+st.title("📈 Options Payoff Dashboard built by Elka")
 st.markdown("Interactive exploration of option payoffs and random distributions.")
 
 # --- Sidebar Controls ---
