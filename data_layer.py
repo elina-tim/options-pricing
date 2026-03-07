@@ -8,6 +8,7 @@ Logging format (append to lending.log):
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime
 
 import numpy as np
@@ -46,6 +47,16 @@ def _log(level: str, tag: str, info: str) -> None:
         pass  # never let logging crash the app
 
 
+# ─── STALE DATA CACHE ─────────────────────────────────────────────────────────
+# When a live fetch fails, we return the last successful result (if ≤5 min old)
+# so the UI degrades gracefully instead of losing all data immediately.
+
+_STALE_TTL = 300  # seconds (5 minutes)
+
+# dict[protocol] = (rates_dict, unix_timestamp_of_fetch)
+_last_good: dict[str, tuple[dict, float]] = {}
+
+
 # ─── PER-PROTOCOL CACHED FETCHERS ─────────────────────────────────────────────
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -64,7 +75,11 @@ def _cached_kamino() -> tuple[dict, str | None, dict[str, str]]:
 def _cached_juplend() -> tuple[dict, str | None, dict[str, str]]:
     try:
         rates, debug = fetch_juplend_rates()
-        _log("INFO",  "juplend.fetch", f"ok | {debug.get('stablecoins_found')} | {debug.get('url')}")
+        _log("INFO",  "juplend.fetch",
+             f"ok | {debug.get('stablecoins_found')} | "
+             f"endpoint={debug.get('endpoint_used')} | attempt={debug.get('attempt')}")
+        if debug.get("attempts_log"):
+            _log("INFO", "juplend.attempts", debug["attempts_log"])
         return rates, None, debug
     except Exception as exc:
         _log("ERROR", "juplend.fetch", str(exc))
@@ -75,7 +90,8 @@ def _cached_juplend() -> tuple[dict, str | None, dict[str, str]]:
 def _cached_drift() -> tuple[dict, str | None, dict[str, str]]:
     try:
         rates, debug = fetch_drift_rates()
-        _log("INFO",  "drift.fetch", f"ok | {debug.get('stablecoins_found')} | {debug.get('url')}")
+        _log("INFO",  "drift.fetch",
+             f"ok | {debug.get('stablecoins_found')} | raw={debug.get('raw_sample', '')}")
         return rates, None, debug
     except Exception as exc:
         _log("ERROR", "drift.fetch", str(exc))
@@ -100,6 +116,7 @@ def fetch_all_rates() -> tuple[dict, str, dict[str, str], dict[str, dict[str, st
     rates      dict[protocol][stable] -> rate_dict | None
     fetched_at str                    – HH:MM:SS timestamp
     errors     dict[protocol]         -> error message (empty if all ok)
+                                         value is "[STALE] …" when serving cached data
     debug      dict[protocol]         -> debug key/value dict per protocol
     """
     fetched_at = datetime.now().strftime("%H:%M:%S")
@@ -109,9 +126,27 @@ def fetch_all_rates() -> tuple[dict, str, dict[str, str], dict[str, dict[str, st
 
     for protocol in PROTOCOLS:
         raw, err, dbg = _FETCHERS[protocol]()
+
         if err:
-            errors[protocol] = err
-            _log("WARN", "fetch_all_rates", f"{protocol} failed: {err[:120]}")
+            # Attempt stale fallback
+            cached = _last_good.get(protocol)
+            now    = time.time()
+            if cached is not None and (now - cached[1]) <= _STALE_TTL:
+                age_s  = int(now - cached[1])
+                age_m  = age_s // 60
+                age_label = f"{age_m}m {age_s % 60}s" if age_m else f"{age_s}s"
+                errors[protocol] = f"[STALE:{age_label}] {err}"
+                raw  = cached[0]
+                dbg  = {**dbg, "status": f"stale ({age_label} old)", "stale_error": err[:120]}
+                _log("WARN", "fetch_all_rates",
+                     f"{protocol} STALE fallback ({age_label} old) | err={err[:80]}")
+            else:
+                errors[protocol] = err
+                _log("WARN", "fetch_all_rates", f"{protocol} failed: {err[:120]}")
+        else:
+            # Fresh data — update the last-good cache
+            _last_good[protocol] = (raw, time.time())
+
         rates[protocol] = {stable: raw.get(stable) for stable in STABLECOINS}
         debug[protocol] = dbg
 
