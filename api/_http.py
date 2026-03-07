@@ -4,7 +4,7 @@ api/_http.py — Shared HTTP helper with retry and diagnostic logging.
 Usage
 -----
     from api._http import get_json
-    data, url = get_json("/v1/markets", base="https://lend-api.jup.ag", timeout=20)
+    data, url = get_json("/lend/v1/earn/tokens", base="https://api.jup.ag", timeout=20, headers={"x-api-key": "..."})
 
 Retry policy
 ------------
@@ -27,17 +27,19 @@ def get_json(
     timeout: int = 15,
     retries: int = 2,
     backoff: float = 1.0,
+    headers: dict | None = None,
 ) -> tuple[list | dict, str]:
     """
     GET ``base + path`` and return ``(parsed_json, full_url)``.
 
     Parameters
     ----------
-    path    : URL path (e.g. "/v1/markets")
+    path    : URL path (e.g. "/lend/v1/earn/tokens")
     base    : Base URL without trailing slash
     timeout : Per-attempt socket timeout in seconds
     retries : Extra attempts after the first (total attempts = retries + 1)
     backoff : Seconds to wait before retry attempt N  (N * backoff)
+    headers : Optional request headers (e.g. {"x-api-key": "..."})
 
     Raises
     ------
@@ -50,7 +52,7 @@ def get_json(
 
     for attempt in range(1, retries + 2):  # 1-indexed, total = retries+1
         try:
-            resp = requests.get(url, timeout=timeout)
+            resp = requests.get(url, timeout=timeout, headers=headers or {})
 
             # Log non-2xx before raising so callers can see the body in logs
             if not resp.ok:

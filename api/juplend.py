@@ -2,20 +2,23 @@
 api/juplend.py — Jupiter Lend live rate fetcher.
 
 Tries endpoints in order (first success wins):
-  1. /v1/earn/tokens  +  /v1/borrow/vaults   (split supply / borrow)
-  2. /v2/earn/tokens  +  /v2/borrow/vaults   (v2 variants)
-  3. /v1/markets                              (combined legacy)
-  4. /v1/tokens                               (alternate combined)
+  1. /lend/v1/earn/tokens  +  /lend/v1/borrow/vaults   (split supply / borrow)
+  2. /lend/v2/earn/tokens  +  /lend/v2/borrow/vaults   (v2 variants)
+  3. /lend/v1/markets                                   (combined legacy)
+  4. /lend/v1/tokens                                    (alternate combined)
 
 Each attempt is logged with HTTP status and response-key diagnostics so that
 API changes are immediately visible in lending-YYYY-MM-DD.log.
 """
 
+import os
 import requests
 from ._http import get_json
 from .constants import STABLECOINS, LTV_PARAMS
 
-_BASE    = "https://lend-api.jup.ag"
+_BASE    = "https://api.jup.ag"
+_API_KEY = os.environ.get("JUPITER_API_KEY", "")
+_HEADERS = {"x-api-key": _API_KEY} if _API_KEY else {}
 _TIMEOUT = 20          # increased from 12 s
 
 
@@ -28,7 +31,7 @@ def _to_pct(v) -> float | None:
 
 def _get(path: str) -> tuple[list | dict, str]:
     """Wrapper that uses the shared retry helper."""
-    return get_json(path, base=_BASE, timeout=_TIMEOUT, retries=2, backoff=1.0)
+    return get_json(path, base=_BASE, timeout=_TIMEOUT, retries=2, backoff=1.0, headers=_HEADERS)
 
 
 def fetch_juplend_rates() -> tuple[dict[str, dict], dict[str, str]]:
@@ -125,8 +128,8 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
 
 
 def _from_earn_and_borrow_v1() -> tuple[dict, dict]:
-    earn_body,   earn_url   = _get("/v1/earn/tokens")
-    borrow_body, borrow_url = _get("/v1/borrow/vaults")
+    earn_body,   earn_url   = _get("/lend/v1/earn/tokens")
+    borrow_body, borrow_url = _get("/lend/v1/borrow/vaults")
     earn_list   = earn_body   if isinstance(earn_body,   list) else earn_body.get("tokens",  earn_body.get("data", []))
     borrow_list = borrow_body if isinstance(borrow_body, list) else borrow_body.get("vaults", borrow_body.get("data", []))
     result, _ = _parse_earn_borrow(earn_list, borrow_list, "v1/earn+borrow")
@@ -140,8 +143,8 @@ def _from_earn_and_borrow_v1() -> tuple[dict, dict]:
 
 
 def _from_earn_and_borrow_v2() -> tuple[dict, dict]:
-    earn_body,   earn_url   = _get("/v2/earn/tokens")
-    borrow_body, borrow_url = _get("/v2/borrow/vaults")
+    earn_body,   earn_url   = _get("/lend/v2/earn/tokens")
+    borrow_body, borrow_url = _get("/lend/v2/borrow/vaults")
     earn_list   = earn_body   if isinstance(earn_body,   list) else earn_body.get("tokens",  earn_body.get("data", []))
     borrow_list = borrow_body if isinstance(borrow_body, list) else borrow_body.get("vaults", borrow_body.get("data", []))
     result, _ = _parse_earn_borrow(earn_list, borrow_list, "v2/earn+borrow")
@@ -155,7 +158,7 @@ def _from_earn_and_borrow_v2() -> tuple[dict, dict]:
 
 
 def _from_markets() -> tuple[dict, dict]:
-    body, url = _get("/v1/markets")
+    body, url = _get("/lend/v1/markets")
     markets   = body if isinstance(body, list) else body.get("markets", body.get("data", []))
 
     result: dict[str, dict] = {}
@@ -188,7 +191,7 @@ def _from_markets() -> tuple[dict, dict]:
 
     if not result:
         sample_keys = list({k for m in markets[:3] for k in m})
-        raise ValueError(f"JupLend /v1/markets: no stablecoin data. keys={sample_keys}")
+        raise ValueError(f"JupLend /lend/v1/markets: no stablecoin data. keys={sample_keys}")
 
     debug = {
         "endpoint_used":     "v1/markets",
@@ -200,7 +203,7 @@ def _from_markets() -> tuple[dict, dict]:
 
 
 def _from_tokens() -> tuple[dict, dict]:
-    body, url = _get("/v1/tokens")
+    body, url = _get("/lend/v1/tokens")
     tokens    = body if isinstance(body, list) else body.get("tokens", body.get("data", []))
 
     result: dict[str, dict] = {}
@@ -230,7 +233,7 @@ def _from_tokens() -> tuple[dict, dict]:
 
     if not result:
         sample_keys = list({k for t in tokens[:3] for k in t})
-        raise ValueError(f"JupLend /v1/tokens: no stablecoin data. keys={sample_keys}")
+        raise ValueError(f"JupLend /lend/v1/tokens: no stablecoin data. keys={sample_keys}")
 
     debug = {
         "endpoint_used":     "v1/tokens",
