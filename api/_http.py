@@ -8,7 +8,7 @@ Usage
 
 Retry policy
 ------------
-- Retries on connection errors and timeouts only (not on 4xx / 5xx responses)
+- Retries on connection errors, timeouts, and 429 Too Many Requests
 - Exponential back-off: wait = backoff * (attempt - 1)  seconds
 - On every failure logs: attempt #, error type, HTTP status (if available),
   and the first 300 chars of the response body (if available)
