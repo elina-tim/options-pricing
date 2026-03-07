@@ -78,10 +78,10 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
     borrow_earn_map: dict[str, dict] = {}
 
     for t in earn_list:
-        # New API nests token info under 'asset'; old API had top-level 'symbol'
+        # Symbol location varies by API version: top-level 'symbol'/'name', or nested under 'asset'
         asset = t.get("asset") or {}
         sym = (
-            t.get("symbol") or t.get("tokenSymbol")
+            t.get("symbol") or t.get("tokenSymbol") or t.get("name")
             or asset.get("symbol") or asset.get("name") or asset.get("ticker")
             or ""
         ).upper().strip()
