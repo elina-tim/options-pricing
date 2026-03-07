@@ -43,6 +43,7 @@ Dependencies (add to requirements.txt):
   driftpy>=0.8.80
   anchorpy
   solana
+  nest_asyncio
 """
 
 from __future__ import annotations
@@ -79,6 +80,9 @@ _CUM_PREC  = 10_000_000_000   # cumulative interest initial value (1e10)
 
 # Drift takes 10% of borrow interest for the insurance fund
 _INS_FUND_FACTOR = 0.10
+
+# Sanity bounds for APY outputs (percentage, e.g. 5.0 = 5%)
+_APY_MAX = 500.0
 
 
 # ─── RATE MATHS ───────────────────────────────────────────────────────────────
@@ -136,15 +140,15 @@ def _apr_to_apy_pct(apr: float) -> float:
         return round(apr * 100, 3)
 
 
-def _rates_from_spot_market(sm) -> tuple[float, float, float]:
+def _rates_from_spot_market(sm, symbol: str) -> tuple[float, float, float, dict]:
     """
-    Compute (borrow_apy_pct, supply_apy_pct, utilization) from a
+    Compute (borrow_apy_pct, supply_apy_pct, utilization, raw_debug) from a
     SpotMarketAccount object.
 
-    utilization is returned as a float in [0, 1].
+    Returns a 4-tuple; raw_debug contains the intermediate on-chain values
+    for diagnostic logging.
     """
     # Convert scaled balance shares → actual token amounts
-    # Formula: tokens = balance * cumulativeInterest / CUM_PREC
     deposit_tokens = sm.deposit_balance * sm.cumulative_deposit_interest / _CUM_PREC
     borrow_tokens  = sm.borrow_balance  * sm.cumulative_borrow_interest  / _CUM_PREC
 
@@ -159,11 +163,43 @@ def _rates_from_spot_market(sm) -> tuple[float, float, float]:
     borrow_apr = _borrow_apr_from_util(utilization, u_star, r_opt, r_max)
     supply_apr = borrow_apr * utilization * (1.0 - _INS_FUND_FACTOR)
 
-    return (
-        _apr_to_apy_pct(borrow_apr),
-        _apr_to_apy_pct(supply_apr),
-        round(utilization, 6),
-    )
+    borrow_apy = _apr_to_apy_pct(borrow_apr)
+    supply_apy = _apr_to_apy_pct(supply_apr)
+
+    raw_debug = {
+        "deposit_balance":              sm.deposit_balance,
+        "borrow_balance":               sm.borrow_balance,
+        "cumulative_deposit_interest":  sm.cumulative_deposit_interest,
+        "cumulative_borrow_interest":   sm.cumulative_borrow_interest,
+        "optimal_utilization_raw":      sm.optimal_utilization,
+        "optimal_borrow_rate_raw":      sm.optimal_borrow_rate,
+        "max_borrow_rate_raw":          sm.max_borrow_rate,
+        "deposit_tokens":               deposit_tokens,
+        "borrow_tokens":                borrow_tokens,
+        "utilization_computed":         round(utilization, 6),
+        "u_star":                       round(u_star, 6),
+        "r_opt":                        round(r_opt, 6),
+        "r_max":                        round(r_max, 6),
+        "borrow_apr":                   round(borrow_apr, 6),
+        "supply_apr":                   round(supply_apr, 6),
+        "borrow_apy_pct":               borrow_apy,
+        "supply_apy_pct":               supply_apy,
+    }
+
+    # Validate output sanity
+    if not (0.0 <= borrow_apy <= _APY_MAX):
+        raise ValueError(
+            f"Drift {symbol}: borrow_apy {borrow_apy}% is out of range [0, {_APY_MAX}]. "
+            f"raw={raw_debug}"
+        )
+    if not (0.0 <= supply_apy <= borrow_apy + 0.001):
+        # supply can exceed borrow by tiny float rounding — allow 0.001 tolerance
+        raise ValueError(
+            f"Drift {symbol}: supply_apy {supply_apy}% > borrow_apy {borrow_apy}%. "
+            f"raw={raw_debug}"
+        )
+
+    return borrow_apy, supply_apy, round(utilization, 6), raw_debug
 
 
 # ─── ASYNC CORE ───────────────────────────────────────────────────────────────
@@ -171,7 +207,6 @@ def _rates_from_spot_market(sm) -> tuple[float, float, float]:
 async def _fetch_all_async() -> tuple[dict[str, dict], dict[str, str]]:
     """Connect read-only, fetch every stablecoin SpotMarketAccount, compute rates."""
 
-    # Build index list for markets we care about
     target_indexes = [
         idx for sym, idx in _STABLE_MARKET_INDEXES.items()
         if sym in STABLECOINS
@@ -192,6 +227,7 @@ async def _fetch_all_async() -> tuple[dict[str, dict], dict[str, str]]:
 
     result: dict[str, dict] = {}
     errors: list[str]       = []
+    raw_debugs: dict[str, dict] = {}
 
     try:
         for symbol in STABLECOINS:
@@ -201,7 +237,8 @@ async def _fetch_all_async() -> tuple[dict[str, dict], dict[str, str]]:
 
             try:
                 sm = await get_spot_market_account(drift_client.program, market_idx)
-                borrow_apy, supply_apy, utilization = _rates_from_spot_market(sm)
+                borrow_apy, supply_apy, utilization, raw = _rates_from_spot_market(sm, symbol)
+                raw_debugs[symbol] = raw
                 result[symbol] = {
                     "supply_apy":    supply_apy,
                     "borrow_apy":    borrow_apy,
@@ -215,6 +252,17 @@ async def _fetch_all_async() -> tuple[dict[str, dict], dict[str, str]]:
         await drift_client.unsubscribe()
         await connection.close()
 
+    # Build a concise debug string from raw values for the first available market
+    raw_summary = ""
+    if raw_debugs:
+        first_sym  = next(iter(raw_debugs))
+        rd         = raw_debugs[first_sym]
+        raw_summary = (
+            f"{first_sym}: util={rd['utilization_computed']:.4f} "
+            f"u*={rd['u_star']:.4f} r_opt={rd['r_opt']:.4f} r_max={rd['r_max']:.4f} "
+            f"borrow_apy={rd['borrow_apy_pct']}% supply_apy={rd['supply_apy_pct']}%"
+        )
+
     debug: dict[str, str] = {
         "rpc":               _RPC_URL,
         "source":            "DriftPy / SpotMarketAccount (on-chain)",
@@ -224,6 +272,7 @@ async def _fetch_all_async() -> tuple[dict[str, dict], dict[str, str]]:
         ),
         "stablecoins_found": ", ".join(sorted(result.keys())) or "none",
         "status":            "ok" if result else "no_data",
+        "raw_sample":        raw_summary,
     }
     if errors:
         debug["errors"] = " | ".join(errors)
@@ -243,6 +292,29 @@ def fetch_drift_rates() -> tuple[dict[str, dict], dict[str, str]]:
     Synchronous wrapper for Streamlit compatibility.
     Matches the (rates_dict, debug_dict) interface of kamino.py / juplend.py.
 
+    Handles both regular Python contexts and Streamlit's async event loop
+    (via nest_asyncio when an event loop is already running).
+
     Raises ValueError if no stablecoin data could be retrieved.
     """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None and loop.is_running():
+        # Running inside an existing event loop (e.g. newer Streamlit versions)
+        try:
+            import nest_asyncio
+            nest_asyncio.apply()
+        except ImportError:
+            raise RuntimeError(
+                "Drift fetcher needs 'nest_asyncio' when running inside Streamlit's "
+                "async loop. Add 'nest_asyncio' to requirements.txt and reinstall."
+            )
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(asyncio.run, _fetch_all_async())
+            return future.result()
+
     return asyncio.run(_fetch_all_async())

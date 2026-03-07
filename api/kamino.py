@@ -14,7 +14,7 @@ Response fields per reserve:
 """
 
 import time
-import requests
+from ._http import get_json
 from .constants import STABLECOINS, LTV_PARAMS
 
 _BASE       = "https://api.kamino.finance"
@@ -24,10 +24,12 @@ _MARKET_TTL = 86_400  # 24 hours
 _market_cache: tuple[str, float] | None = None  # (pubkey, fetched_at_unix)
 
 
+def _get(path: str) -> tuple[list | dict, str]:
+    return get_json(path, base=_BASE, timeout=_TIMEOUT, retries=2, backoff=2.0)
+
+
 def _fetch_main_market_pubkey() -> str:
-    resp = requests.get(f"{_BASE}/v2/kamino-market", timeout=_TIMEOUT)
-    resp.raise_for_status()
-    markets = resp.json()
+    markets, _ = _get("/v2/kamino-market")
     if not isinstance(markets, list):
         markets = markets.get("markets") or markets.get("data") or []
     if not markets:
@@ -77,11 +79,7 @@ def fetch_kamino_rates() -> tuple[dict[str, dict], dict[str, str]]:
               url, market_pubkey, records_total, stablecoins_found, status
     """
     market = _get_market_pubkey()
-    url    = f"{_BASE}/kamino-market/{market}/reserves/metrics"
-
-    resp = requests.get(url, timeout=_TIMEOUT)
-    resp.raise_for_status()
-    records = resp.json()
+    records, url = _get(f"/kamino-market/{market}/reserves/metrics")
     if not isinstance(records, list):
         records = records.get("reserves") or records.get("data") or []
 

@@ -235,15 +235,21 @@ def main() -> None:
     with st.spinner("Fetching live rates…"):
         rates, fetched_at, errors, debug = fetch_all_rates()
 
-    # Per-protocol error banners
-    for proto, msg in errors.items():
+    # Per-protocol error / stale banners
+    hard_errors = {p: m for p, m in errors.items() if not m.startswith("[STALE:")}
+    stale_warns = {p: m for p, m in errors.items() if m.startswith("[STALE:")}
+
+    for proto, msg in stale_warns.items():
+        st.warning(f"**{proto}** — showing cached data. {msg}")
+
+    for proto, msg in hard_errors.items():
         st.error(
             f"**{proto}** — could not fetch live data. "
             f"The tab will show an error state until the API recovers.\n\n`{msg}`"
         )
 
-    # All protocols failed
-    if len(errors) == 3:
+    # All protocols hard-failed (stale protocols still have data, so don't block)
+    if len(hard_errors) == 3:
         st.warning(
             "All three protocol APIs are currently unreachable. "
             "Click **↺ Refresh** to retry."
