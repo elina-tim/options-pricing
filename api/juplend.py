@@ -74,6 +74,9 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
     Returns (result_dict, debug_dict) or raises ValueError if no data.
     """
     supply_map: dict[str, float] = {}
+    # borrow data embedded in the earn endpoint (fallback if borrow vaults unavailable)
+    borrow_earn_map: dict[str, dict] = {}
+
     for t in earn_list:
         sym = (t.get("symbol") or t.get("tokenSymbol") or "").upper().strip()
         if sym not in STABLECOINS:
@@ -81,9 +84,22 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
         apy = _to_pct(
             t.get("supplyAPY") or t.get("depositAPY") or t.get("apy")
             or t.get("supplyApy") or t.get("lendApy")
+            or t.get("supplyRate") or t.get("depositRate") or t.get("lendingRate")
         )
         if apy is not None:
             supply_map[sym] = apy
+
+        # Some earn endpoints also carry borrow rates per asset
+        borrow_apy = _to_pct(
+            t.get("borrowAPY") or t.get("borrowInterestAPY")
+            or t.get("borrowApy") or t.get("borrowRate")
+            or t.get("borrowInterestRate") or t.get("borrowingRate")
+        )
+        util = float(t.get("utilization") or t.get("utilizationRate") or 0)
+        if util > 1:
+            util /= 100
+        if borrow_apy is not None:
+            borrow_earn_map[sym] = {"borrow_apy": borrow_apy, "utilization": round(util, 4)}
 
     borrow_map: dict[str, dict] = {}
     for v in borrow_list:
@@ -96,6 +112,7 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
         apy  = _to_pct(
             v.get("borrowAPY") or v.get("borrowInterestAPY") or v.get("rate")
             or v.get("borrowApy") or v.get("borrowRate")
+            or v.get("borrowInterestRate") or v.get("borrowingRate")
         )
         util = float(v.get("utilization") or v.get("utilizationRate") or 0)
         if util > 1:
@@ -103,25 +120,28 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
         if apy is not None:
             borrow_map[sym] = {"borrow_apy": apy, "utilization": round(util, 4)}
 
+    # Prefer dedicated borrow endpoint; fall back to rates embedded in earn endpoint
+    merged_borrow = {**borrow_earn_map, **borrow_map}
+
     result: dict[str, dict] = {}
     for sym in STABLECOINS:
-        if sym in supply_map and sym in borrow_map:
+        if sym in supply_map and sym in merged_borrow:
             result[sym] = {
                 "supply_apy":    supply_map[sym],
-                "borrow_apy":    borrow_map[sym]["borrow_apy"],
-                "utilization":   borrow_map[sym]["utilization"],
+                "borrow_apy":    merged_borrow[sym]["borrow_apy"],
+                "utilization":   merged_borrow[sym]["utilization"],
                 "ltv":           LTV_PARAMS["JupLend"]["ltv"],
                 "liq_threshold": LTV_PARAMS["JupLend"]["liq"],
             }
 
     if not result:
         # Emit top-level keys so we can diagnose field-name changes
-        earn_keys   = list({k for t in earn_list[:3]   for k in t} )
+        earn_keys   = list({k for t in earn_list[:3]   for k in t})
         borrow_keys = list({k for v in borrow_list[:3] for k in v})
         raise ValueError(
             f"JupLend {label}: no matching stablecoin data. "
             f"earn keys={earn_keys} borrow keys={borrow_keys} "
-            f"supply_map={list(supply_map)} borrow_map={list(borrow_map)}"
+            f"supply_map={list(supply_map)} merged_borrow={list(merged_borrow)}"
         )
 
     return result, result  # second return is a placeholder; caller builds debug
@@ -129,7 +149,10 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
 
 def _from_earn_and_borrow_v1() -> tuple[dict, dict]:
     earn_body,   earn_url   = _get("/lend/v1/earn/tokens")
-    borrow_body, borrow_url = _get("/lend/v1/borrow/vaults")
+    try:
+        borrow_body, borrow_url = _get("/lend/v1/borrow/vaults")
+    except Exception:
+        borrow_body, borrow_url = [], earn_url  # borrow endpoint not yet live; use earn-only
     earn_list   = earn_body   if isinstance(earn_body,   list) else earn_body.get("tokens",  earn_body.get("data", []))
     borrow_list = borrow_body if isinstance(borrow_body, list) else borrow_body.get("vaults", borrow_body.get("data", []))
     result, _ = _parse_earn_borrow(earn_list, borrow_list, "v1/earn+borrow")
