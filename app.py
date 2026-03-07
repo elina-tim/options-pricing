@@ -220,16 +220,23 @@ with st.sidebar:
 def main() -> None:
     now = datetime.now().strftime("%H:%M:%S UTC")
 
-    # Header
-    st.markdown(f"""
-    <div class="dashboard-header">
-        <div class="dashboard-title">◈ SOLANA LENDING TERMINAL</div>
-        <div class="dashboard-subtitle">
-            <span class="live-dot"></span>
-            DFDV SOL COLLATERAL · KAMINO / JUPLEND / DRIFT · {now}
+    # Header + Refresh button
+    col_title, col_btn = st.columns([8, 1])
+    with col_title:
+        st.markdown(f"""
+        <div class="dashboard-header">
+            <div class="dashboard-title">◈ SOLANA LENDING TERMINAL</div>
+            <div class="dashboard-subtitle">
+                <span class="live-dot"></span>
+                DFDV SOL COLLATERAL · KAMINO / JUPLEND / DRIFT · {now}
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+    with col_btn:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("↺ Refresh", type="secondary", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
 
     # Fetch data
     with st.spinner("Fetching live rates…"):
@@ -308,10 +315,6 @@ def main() -> None:
         INDICATIVE ONLY — NOT FINANCIAL ADVICE · {now}
     </div>
     """, unsafe_allow_html=True)
-
-    if st.button("↺ Refresh Data", type="secondary"):
-        st.cache_data.clear()
-        st.rerun()
 
 
 if __name__ == "__main__":
