@@ -20,6 +20,8 @@ Run
 
 from datetime import datetime
 import streamlit as st
+from dotenv import load_dotenv
+load_dotenv()
 
 from data_layer import fetch_all_rates, compute_summary
 from dashboard  import render_protocol_tab, render_arb_table, render_yield_calculator
