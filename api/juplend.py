@@ -78,13 +78,24 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
     borrow_earn_map: dict[str, dict] = {}
 
     for t in earn_list:
-        sym = (t.get("symbol") or t.get("tokenSymbol") or "").upper().strip()
+        # New API nests token info under 'asset'; old API had top-level 'symbol'
+        asset = t.get("asset") or {}
+        sym = (
+            t.get("symbol") or t.get("tokenSymbol")
+            or asset.get("symbol") or asset.get("name") or asset.get("ticker")
+            or ""
+        ).upper().strip()
         if sym not in STABLECOINS:
             continue
+
+        # New API: totalRate = base supply APY + rewards; liquiditySupplyData has per-asset breakdown
+        liquidity = t.get("liquiditySupplyData") or {}
         apy = _to_pct(
             t.get("supplyAPY") or t.get("depositAPY") or t.get("apy")
             or t.get("supplyApy") or t.get("lendApy")
             or t.get("supplyRate") or t.get("depositRate") or t.get("lendingRate")
+            or t.get("totalRate")
+            or liquidity.get("supplyRate") or liquidity.get("supplyAPY") or liquidity.get("apy")
         )
         if apy is not None:
             supply_map[sym] = apy
@@ -94,8 +105,12 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
             t.get("borrowAPY") or t.get("borrowInterestAPY")
             or t.get("borrowApy") or t.get("borrowRate")
             or t.get("borrowInterestRate") or t.get("borrowingRate")
+            or liquidity.get("borrowRate") or liquidity.get("borrowAPY")
         )
-        util = float(t.get("utilization") or t.get("utilizationRate") or 0)
+        util = float(
+            t.get("utilization") or t.get("utilizationRate")
+            or liquidity.get("utilization") or liquidity.get("utilizationRate") or 0
+        )
         if util > 1:
             util /= 100
         if borrow_apy is not None:
