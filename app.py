@@ -313,7 +313,7 @@ def main() -> None:
     st.markdown(f"""
     <div style="text-align:center;font-family:'Space Mono',monospace;font-size:0.65rem;
                 color:#2d3748;padding-top:2rem;border-top:1px solid #1e2330;margin-top:1rem;">
-        ◈ SOLANA LENDING TERMINAL · RATES REFRESH EVERY 60s ·
+        ◈ SOLANA LENDING TERMINAL · RATES REFRESH EVERY 2 MIN ·
         INDICATIVE ONLY — NOT FINANCIAL ADVICE · {now}
     </div>
     """, unsafe_allow_html=True)

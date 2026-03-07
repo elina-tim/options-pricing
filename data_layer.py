@@ -59,7 +59,7 @@ _last_good: dict[str, tuple[dict, float]] = {}
 
 # ─── PER-PROTOCOL CACHED FETCHERS ─────────────────────────────────────────────
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def _cached_kamino() -> tuple[dict, str | None, dict[str, str]]:
     """Returns (rates, error|None, debug_dict)."""
     try:
@@ -71,7 +71,7 @@ def _cached_kamino() -> tuple[dict, str | None, dict[str, str]]:
         return {}, str(exc), {"status": "error", "error": str(exc)}
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def _cached_juplend() -> tuple[dict, str | None, dict[str, str]]:
     try:
         rates, debug = fetch_juplend_rates()
@@ -86,7 +86,7 @@ def _cached_juplend() -> tuple[dict, str | None, dict[str, str]]:
         return {}, str(exc), {"status": "error", "error": str(exc)}
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def _cached_drift() -> tuple[dict, str | None, dict[str, str]]:
     try:
         rates, debug = fetch_drift_rates()
