@@ -8,7 +8,14 @@ Import everything you need from here:
 from .constants import STABLECOINS, LTV_PARAMS, PROTOCOLS
 from .kamino    import fetch_kamino_rates
 from .juplend   import fetch_juplend_rates
-from .drift     import fetch_drift_rates
+try:
+    from .drift import fetch_drift_rates
+except ImportError:
+    def fetch_drift_rates():  # type: ignore[misc]
+        raise RuntimeError(
+            "Drift dependencies not installed. "
+            "Run: pip install driftpy anchorpy solana solders nest_asyncio toolz"
+        )
 
 __all__ = [
     "STABLECOINS",

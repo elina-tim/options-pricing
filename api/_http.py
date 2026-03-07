@@ -70,8 +70,20 @@ def get_json(
                 time.sleep(backoff * attempt)
             # Let loop continue for next retry
 
-        except requests.HTTPError:
-            # Don't retry on HTTP errors (4xx / 5xx) — re-raise immediately
+        except requests.HTTPError as exc:
+            # Retry on 429 Too Many Requests, honouring retryAfter if present
+            if exc.response is not None and exc.response.status_code == 429:
+                if attempt <= retries:
+                    try:
+                        retry_after = float(
+                            exc.response.json().get("errors", [{}])[0].get("retryAfter", 0)
+                            or exc.response.headers.get("Retry-After", backoff * attempt)
+                        )
+                    except Exception:
+                        retry_after = backoff * attempt
+                    time.sleep(max(retry_after, backoff * attempt))
+                    continue
+            # Don't retry on other HTTP errors (4xx / 5xx) — re-raise immediately
             raise
 
     # All retries exhausted on network-level errors
