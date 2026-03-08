@@ -23,6 +23,7 @@ import streamlit as st
 from dotenv import load_dotenv
 load_dotenv()
 
+from api import PROTOCOLS
 from data_layer import fetch_all_rates, compute_summary
 from dashboard  import render_protocol_tab, render_arb_table, render_yield_calculator
 
@@ -258,7 +259,7 @@ def main() -> None:
         )
 
     # All protocols hard-failed (stale protocols still have data, so don't block)
-    if len(hard_errors) == 3:
+    if len(hard_errors) == len(PROTOCOLS):
         st.warning(
             "All three protocol APIs are currently unreachable. "
             "Click **↺ Refresh** to retry."
@@ -287,8 +288,8 @@ def main() -> None:
 
     # Protocol tabs
     st.markdown('<div class="section-heading">Protocol Deep Dive</div>', unsafe_allow_html=True)
-    tab1, tab2, tab3 = st.tabs(["  Kamino  ", "  JupLend  ", "  Drift  "])
-    for tab, protocol in zip([tab1, tab2, tab3], ["Kamino", "JupLend", "Drift"]):
+    tab1, tab2, tab3, tab4 = st.tabs(["  Kamino  ", "  JupLend  ", "  Drift  ", "  Drift (DL)  "])
+    for tab, protocol in zip([tab1, tab2, tab3, tab4], ["Kamino", "JupLend", "Drift", "DriftDL"]):
         with tab:
             render_protocol_tab(protocol, rates, fetched_at, debug.get(protocol, {}), debug_mode)
 

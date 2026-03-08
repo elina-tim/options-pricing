@@ -5,9 +5,10 @@ Import everything you need from here:
     from api import STABLECOINS, PROTOCOLS, fetch_kamino_rates, ...
 """
 
-from .constants import STABLECOINS, LTV_PARAMS, PROTOCOLS
-from .kamino    import fetch_kamino_rates
-from .juplend   import fetch_juplend_rates
+from .constants       import STABLECOINS, LTV_PARAMS, PROTOCOLS
+from .kamino          import fetch_kamino_rates
+from .juplend         import fetch_juplend_rates
+from .drift_defillama import fetch_drift_defillama_rates
 try:
     from .drift import fetch_drift_rates
 except ImportError:
@@ -24,4 +25,5 @@ __all__ = [
     "fetch_kamino_rates",
     "fetch_juplend_rates",
     "fetch_drift_rates",
+    "fetch_drift_defillama_rates",
 ]

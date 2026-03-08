@@ -293,6 +293,7 @@ def render_protocol_tab(protocol: str, rates: dict, fetched_at: str, debug: dict
         "Kamino":  "Largest Solana lender · Poly-linear IR curves · eMode for LST collateral",
         "JupLend": "Jupiter ecosystem · Unified liquidity layer · Up to 95% LTV on select pairs",
         "Drift":   "Hybrid lending + perps · Cross-margined collateral · Capital-efficient",
+        "DriftDL": "Drift rates via DeFi Llama · REST aggregator · No native client required",
     }
     st.markdown(
         f'<div class="info-box">◈ {blurb[protocol]}</div>',
