@@ -153,6 +153,15 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
                 "ltv":           LTV_PARAMS["JupLend"]["ltv"],
                 "liq_threshold": LTV_PARAMS["JupLend"]["liq"],
             }
+        elif sym in supply_map:
+            # Borrow endpoint not yet live — show supply rate with borrow_apy=None
+            result[sym] = {
+                "supply_apy":    supply_map[sym],
+                "borrow_apy":    None,
+                "utilization":   0.0,
+                "ltv":           LTV_PARAMS["JupLend"]["ltv"],
+                "liq_threshold": LTV_PARAMS["JupLend"]["liq"],
+            }
 
     if not result:
         earn_keys   = list({k for t in earn_list[:3]   for k in t})

@@ -92,7 +92,7 @@ def _render_rates_table(proto_rates: dict, available: list[str]) -> None:
         util_pct = d["utilization"] * 100
         assets.append(sym)
         supply_apys.append(f"{d['supply_apy']:.2f}%")
-        borrow_apys.append(f"{d['borrow_apy']:.2f}%")
+        borrow_apys.append(f"{d['borrow_apy']:.2f}%" if d["borrow_apy"] is not None else "N/A")
         ltvs.append(f"{d['ltv']}%")
         utils.append(f"{util_pct:.1f}%")
         util_colors.append(_util_color(util_pct))
@@ -150,6 +150,13 @@ def _render_util_curve(proto_rates: dict, available: list[str], protocol: str) -
     d            = proto_rates[selected]
     current_util = d["utilization"]
     borrow_apy   = d["borrow_apy"]
+
+    if borrow_apy is None:
+        st.markdown(
+            '<div class="info-box">Borrow rates not yet available — utilization curve unavailable.</div>',
+            unsafe_allow_html=True,
+        )
+        return
 
     u_pct, borrow_curve, supply_curve = compute_utilization_curve(borrow_apy, current_util)
     current_u_pct = current_util * 100
