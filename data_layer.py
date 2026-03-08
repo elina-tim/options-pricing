@@ -20,6 +20,7 @@ from api import (
     fetch_kamino_rates,
     fetch_juplend_rates,
     fetch_drift_rates,
+    fetch_drift_defillama_rates,
 )
 
 # ─── LOGGER ───────────────────────────────────────────────────────────────────
@@ -98,10 +99,23 @@ def _cached_drift() -> tuple[dict, str | None, dict[str, str]]:
         return {}, str(exc), {"status": "error", "error": str(exc)}
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def _cached_drift_defillama() -> tuple[dict, str | None, dict[str, str]]:
+    try:
+        rates, debug = fetch_drift_defillama_rates()
+        _log("INFO",  "drift_dl.fetch",
+             f"ok | {debug.get('stablecoins_found')} | pools={debug.get('drift_pools', '')}")
+        return rates, None, debug
+    except Exception as exc:
+        _log("ERROR", "drift_dl.fetch", str(exc))
+        return {}, str(exc), {"status": "error", "error": str(exc)}
+
+
 _FETCHERS = {
     "Kamino":  _cached_kamino,
     "JupLend": _cached_juplend,
     "Drift":   _cached_drift,
+    "DriftDL": _cached_drift_defillama,
 }
 
 

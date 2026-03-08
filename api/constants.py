@@ -25,6 +25,7 @@ LTV_PARAMS: dict[str, dict[str, int]] = {
     "Kamino":  {"ltv": 80, "liq": 85},
     "JupLend": {"ltv": 75, "liq": 82},
     "Drift":   {"ltv": 75, "liq": 80},
+    "DriftDL": {"ltv": 75, "liq": 80},  # same risk params as Drift; sourced from DeFi Llama
 }
 
-PROTOCOLS: list[str] = ["Kamino", "JupLend", "Drift"]
+PROTOCOLS: list[str] = ["Kamino", "JupLend", "Drift", "DriftDL"]
