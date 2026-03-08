@@ -165,7 +165,9 @@ def compute_summary(rates: dict) -> dict:
     for proto, stables in rates.items():
         for stable, data in stables.items():
             if data:
-                b = data["borrow_apy"]
+                b = data.get("borrow_apy")
+                if b is None:
+                    continue
                 all_borrows.append(b)
                 if b < best_rate:
                     best_rate  = b
@@ -173,7 +175,8 @@ def compute_summary(rates: dict) -> dict:
                     best_asset = stable
 
     avg_borrow  = round(float(np.mean(all_borrows)), 2) if all_borrows else 0.0
-    usdc_rates  = [rates[p]["USDC"]["borrow_apy"] for p in PROTOCOLS if rates[p].get("USDC")]
+    usdc_rates  = [rates[p]["USDC"]["borrow_apy"] for p in PROTOCOLS
+                   if rates[p].get("USDC") and rates[p]["USDC"].get("borrow_apy") is not None]
     usdc_spread = round(max(usdc_rates) - min(usdc_rates), 2) if len(usdc_rates) > 1 else 0.0
     all_ltvs    = [rates[p]["USDC"]["ltv"] for p in PROTOCOLS if rates[p].get("USDC")]
     dfdv_ltv    = max(all_ltvs) if all_ltvs else 0
@@ -196,7 +199,7 @@ def compute_arb_pairs(rates: dict) -> list[dict]:
         pairs: list[dict] = []
         for b_proto in PROTOCOLS:
             bd = rates[b_proto].get(stable)
-            if not bd:
+            if not bd or bd.get("borrow_apy") is None:
                 continue
             for s_proto in PROTOCOLS:
                 sd = rates[s_proto].get(stable)
