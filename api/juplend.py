@@ -78,14 +78,30 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
     borrow_earn_map: dict[str, dict] = {}
 
     for t in earn_list:
-        sym = (t.get("symbol") or t.get("tokenSymbol") or "").upper().strip()
+        # asset.symbol is the underlying token (e.g. "USDC"); t.get("symbol") is the LP token ("jlUSDC")
+        asset = t.get("asset") or {}
+        sym = (
+            asset.get("symbol") or asset.get("name") or asset.get("ticker")
+            or t.get("symbol") or t.get("tokenSymbol") or t.get("name")
+            or ""
+        ).upper().strip()
         if sym not in STABLECOINS:
             continue
-        apy = _to_pct(
-            t.get("supplyAPY") or t.get("depositAPY") or t.get("apy")
-            or t.get("supplyApy") or t.get("lendApy")
-            or t.get("supplyRate") or t.get("depositRate") or t.get("lendingRate")
-        )
+
+        # supplyRate / totalRate are integer basis points (e.g. 257 = 2.57% APY).
+        # Decimal fields like supplyAPY use ratio notation (0.0257) handled by _to_pct.
+        liquidity = t.get("liquiditySupplyData") or {}
+        raw_bp = t.get("supplyRate") or t.get("totalRate")
+        if raw_bp is not None:
+            v = float(raw_bp)
+            apy = round(v / 100 if v >= 1 else v * 100, 3)
+        else:
+            apy = _to_pct(
+                t.get("supplyAPY") or t.get("depositAPY") or t.get("apy")
+                or t.get("supplyApy") or t.get("lendApy")
+                or t.get("depositRate") or t.get("lendingRate")
+                or liquidity.get("supplyRate") or liquidity.get("supplyAPY") or liquidity.get("apy")
+            )
         if apy is not None:
             supply_map[sym] = apy
 
@@ -94,8 +110,12 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
             t.get("borrowAPY") or t.get("borrowInterestAPY")
             or t.get("borrowApy") or t.get("borrowRate")
             or t.get("borrowInterestRate") or t.get("borrowingRate")
+            or liquidity.get("borrowRate") or liquidity.get("borrowAPY")
         )
-        util = float(t.get("utilization") or t.get("utilizationRate") or 0)
+        util = float(
+            t.get("utilization") or t.get("utilizationRate")
+            or liquidity.get("utilization") or liquidity.get("utilizationRate") or 0
+        )
         if util > 1:
             util /= 100
         if borrow_apy is not None:
@@ -133,15 +153,25 @@ def _parse_earn_borrow(earn_list, borrow_list, label: str) -> tuple[dict, dict]:
                 "ltv":           LTV_PARAMS["JupLend"]["ltv"],
                 "liq_threshold": LTV_PARAMS["JupLend"]["liq"],
             }
+        elif sym in supply_map:
+            # Borrow endpoint not yet live — show supply rate with borrow_apy=None
+            result[sym] = {
+                "supply_apy":    supply_map[sym],
+                "borrow_apy":    None,
+                "utilization":   0.0,
+                "ltv":           LTV_PARAMS["JupLend"]["ltv"],
+                "liq_threshold": LTV_PARAMS["JupLend"]["liq"],
+            }
 
     if not result:
-        # Emit top-level keys so we can diagnose field-name changes
         earn_keys   = list({k for t in earn_list[:3]   for k in t})
         borrow_keys = list({k for v in borrow_list[:3] for k in v})
+        supply_summary = ", ".join(f"{s}={v}%" for s, v in supply_map.items()) if supply_map else "none"
+        borrow_note = "borrow endpoint not yet live" if not merged_borrow else f"borrow_found={list(merged_borrow)}"
         raise ValueError(
-            f"JupLend {label}: no matching stablecoin data. "
-            f"earn keys={earn_keys} borrow keys={borrow_keys} "
-            f"supply_map={list(supply_map)} merged_borrow={list(merged_borrow)}"
+            f"JupLend {label}: no complete stablecoin data. "
+            f"supply_found=[{supply_summary}] {borrow_note}. "
+            f"earn_keys={earn_keys} borrow_keys={borrow_keys}"
         )
 
     return result, result  # second return is a placeholder; caller builds debug
